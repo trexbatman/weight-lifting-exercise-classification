@@ -1,0 +1,88 @@
+---
+title: 'Classification task: How well was the exercise performed?'
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background & Goals
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants were used to classify how well other 20 participants performed their Weight Lifting Exercise. The exercise was performed in five different ways: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). More information about the data used in this project is available at: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Preparing R environment for the analysis
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#install.packages("caTools")
+#install.packages("caret")
+#install.packages("class")
+library(caret)
+library(caTools)
+library(class)
+```
+
+## Data Preparation
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+# Loading the data
+#trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#download.file(trainUrl, destfile="pml-training.csv", method="curl")
+#download.file(testUrl, destfile="pml-testing.csv", method="curl")
+trainRaw <- read.csv("pml-training.csv")
+testRaw <- read.csv("pml-testing.csv")
+# Cleaning the data
+train <- trainRaw[,-(1:7)]
+variablesNearZero = nearZeroVar(train)
+train = train[,-variablesNearZero]
+variablesNA = which(sapply(train, function (x) sum (is.na(x)))>0.9*nrow(train))
+train = train[,-variablesNA]
+train$classe = as.factor(train$classe)
+# Splitting the data
+set.seed(12)
+split = sample.split(train$classe, SplitRatio = 0.7)
+training = subset(train, split==TRUE)
+validation = subset(train, split==FALSE)
+preObj = preProcess(training, method = c("center", "scale"))
+trainingNorm = predict(preObj, training)
+validationNorm = predict(preObj, validation)
+```
+
+## Modeling
+
+Two models were tested: random forests and k-nearest neighbors. Random forests had an estimated accuracy of 99.3% and KNN of 98.8% (estimated out-of-sample error is 0.7% and 1.2%, respectively). Given the results, the random forest model was selected as the model to test on the testing set.
+
+```{r echo=TRUE}
+# Random Forest Model
+set.seed(12)
+modelRF = train(classe ~ ., data=training, method="rf", trControl=trainControl(method = "cv", number=3))
+predictRF = predict(modelRF, newdata = validation)
+table(predictRF,validation$classe)
+sum(diag(table(predictRF,validation$classe)))/nrow(validation)
+# k-nearest neighbors (KNN) Model
+set.seed(12)
+modelKNN = train(classe ~., data = trainingNorm, method = "knn",trControl=trainControl(method = "cv", number=3), tuneGrid = expand.grid(k = c(1, 2, 3)))
+modelKNN
+set.seed(12)
+resultsKNN = knn(trainingNorm[,1:52],validationNorm[,1:52], cl=trainingNorm[,53], k=1)
+table(resultsKNN,validation$classe)
+sum(diag(table(resultsKNN,validation$classe)))/nrow(validation)
+```
+
+## Results
+
+Below we can see the results for the 20 participants in the test set.
+
+```{r echo=TRUE}
+test <- testRaw[,-(1:7)]
+test = test[,-variablesNearZero]
+variablesNA_test = which(sapply(test, function (x) sum (is.na(x)))>0.9*nrow(test))
+test = test[,-variablesNA_test]
+predictRF_test = predict(modelRF, newdata = test)
+predictRF_test
+```
+
+
